@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: GoMetricsPostgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-pass}
+      - POSTGRES_DB=${POSTGRES_DB:-metrics_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - GoMetricsNetwork
+
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: GoMetricsKafka
+    environment:
+      # Настройка KRaft (без Zookeeper)
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@localhost:9093
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    networks:
+      - GoMetricsNetwork
+
+  redis:
+    image: redis:7-alpine
+    container_name: GoMetricsRedis
+    ports:
+      - "6379:6379"
+    networks:
+      - GoMetricsNetwork
+
+networks:
+  GoMetricsNetwork:
+    driver: bridge
+
+volumes:
+  postgres-data:
