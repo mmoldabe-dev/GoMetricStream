@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 15s # Как часто забирать данные
+
+scrape_configs:
+  - job_name: 'processor'
+    static_configs:
+      - targets: ['ProcessorService:2112'] # Имя контейнера и порт, который мы открыли в Go

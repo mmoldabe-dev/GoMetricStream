@@ -16,18 +16,21 @@ services:
       - GoMetricsNetwork
 
   kafka:
-    image: bitnami/kafka:latest
+    image: apache/kafka:latest
     container_name: GoMetricsKafka
     environment:
-      # Настройка KRaft (без Zookeeper)
-      - KAFKA_CFG_NODE_ID=1
-      - KAFKA_CFG_PROCESS_ROLES=controller,broker
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@localhost:9093
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_NODE_ID=1
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      # ВАЖНО: Меняем localhost на имя контейнера, чтобы Ingestor мог подключиться внутри сети
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://GoMetricsKafka:9092
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
     ports:
       - "${KAFKA_PORT:-9092}:9092"
     networks:
@@ -41,6 +44,56 @@ services:
     networks:
       - GoMetricsNetwork
 
+  ingestor:
+    build:
+      context: .
+      dockerfile: services/ingestor/Dockerfile
+    container_name: IngestorService
+    ports:
+      - "50051:50051"  # ИСПРАВЛЕНО: добавлены кавычки и пробел
+    environment:
+      - GRPC_PORT=:50051
+      - KAFKA_ADDR=GoMetricsKafka:9092
+      - KAFKA_TOPIC=metrics_raw
+    depends_on:
+      - kafka
+    networks:
+      - GoMetricsNetwork
+  processor:
+    build:
+      context: .
+      dockerfile: services/processor/Dockerfile
+    container_name: ProcessorService
+    ports:
+      - "2112:2112"   # ← сюда
+    environment:
+      - PG_DSN=postgres://admin:secret_pass@GoMetricsPostgres:5432/metrics_db?sslmode=disable
+      - KAFKA_BROKERS=GoMetricsKafka:9092
+      - KAFKA_TOPIC=metrics_raw
+      - KAFKA_GROUP_ID=metrics_processor_group_v2
+    depends_on:
+      - kafka
+      - postgres
+    networks:
+      - GoMetricsNetwork
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: GoMetricsPrometheus
+    volumes:
+      - ./deployments/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"   # ← prometheus на своём порту
+    networks:
+      - GoMetricsNetwork
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: GoMetricsGrafana
+    ports:
+      - "3000:3000"
+    networks:
+      - GoMetricsNetwork
 networks:
   GoMetricsNetwork:
     driver: bridge

@@ -2,4 +2,24 @@ syntax = "proto3";
 
 package metrics.v1;
 
-option go_package = ""
+// Убрали https:// и привели к стандарту Go
+option go_package = "github.com/mmoldabe-dev/GoMetricStream/pkg/gen/metrics/v1;metricsv1";
+
+import "google/protobuf/timestamp.proto";
+
+service MetricsService {
+    // Рекомендую назвать метод более общим именем, если планируешь слать пачки
+    rpc SendMetric(SendMetricRequest) returns (SendMetricResponse);
+}
+
+message SendMetricRequest {
+    string device_id = 1;      // Уникальный ID (UUID или MAC)
+    string metric_name = 2;    // Название: "cpu_usage", "memory_bytes"
+    double value = 3;          // Значение метрики
+    google.protobuf.Timestamp timestamp = 4;
+}
+
+message SendMetricResponse {
+    bool success = 1;
+    string message = 2;        // Полезно возвращать текст ошибки, если success: false
+}
